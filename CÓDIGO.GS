@@ -42,10 +42,22 @@ function doPost(e) {
 
       if (prod.img) {
         try {
-          var blob = Utilities.newBlob(Utilities.base64Decode(prod.img.split(',')[1]), MimeType.JPEG, 'foto');
-          var img = SpreadsheetApp.newCellImage().setSource(blob).build();
+          var base64Data = prod.img.split(',')[1];
+          var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), 'image/jpeg', 'produto.jpg');
+          var img = SpreadsheetApp.newCellImage().setSourceUrl(blob).build();
           sheet.getRange(nextRow, 4).setValue(img);
-        } catch (e) { sheet.getRange(nextRow, 4).setValue("Err Img"); }
+        } catch (e) {
+          Logger.log("Erro ao salvar imagem: " + e.message);
+          // Tenta método alternativo
+          try {
+            var base64Data = prod.img.split(',')[1];
+            var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), 'image/jpeg', 'produto.jpg');
+            sheet.insertImage(blob, 4, nextRow);
+            sheet.getRange(nextRow, 4).setValue("IMG");
+          } catch (e2) {
+            sheet.getRange(nextRow, 4).setValue("Sem Foto");
+          }
+        }
       } else {
         sheet.getRange(nextRow, 4).setValue("-");
       }
