@@ -54,7 +54,7 @@
             try {
                 const stringValue = JSON.stringify(value);
                 const sizeMB = new Blob([stringValue]).size / (1024 * 1024);
-                console.log(`💾 Salvando ${key}: ${sizeMB.toFixed(2)}MB`);
+                console.log(`💾 Salvando ${key}: ${sizeMB.toFixed(2)}MB, itens:`, Array.isArray(value) ? value.length : typeof value);
 
                 if (sizeMB > 4) {
                     console.warn("⚠️ Dados muito grandes! Considere limpar fotos antigas.");
@@ -62,8 +62,16 @@
                 }
 
                 localStorage.setItem(key, stringValue);
-                console.log(`✅ ${key} salvo com sucesso!`);
-                return true;
+
+                // VERIFICAÇÃO IMEDIATA
+                const verificacao = localStorage.getItem(key);
+                if (verificacao === stringValue) {
+                    console.log(`✅ ${key} CONFIRMADO no localStorage!`);
+                    return true;
+                } else {
+                    console.error(`❌ FALHA: ${key} NÃO foi salvo corretamente!`);
+                    return false;
+                }
             } catch (e) {
                 console.error(`❌ Erro ao salvar ${key}:`, e.message);
                 if (e.name === 'QuotaExceededError') {
@@ -77,15 +85,19 @@
         const safeLocalStorageGet = (key, defaultValue) => {
             try {
                 const item = localStorage.getItem(key);
-                if (!item) {
-                    console.log(`📭 ${key} vazio, usando valor padrão`);
+                console.log(`📖 Tentando carregar ${key}... Encontrado:`, item ? `SIM (${item.length} chars)` : 'NÃO');
+
+                if (!item || item === 'undefined' || item === 'null') {
+                    console.log(`📭 ${key} vazio ou inválido, usando valor padrão`);
                     return defaultValue;
                 }
+
                 const parsed = JSON.parse(item);
-                console.log(`📬 ${key} carregado:`, parsed);
+                console.log(`📬 ${key} carregado com sucesso! Tipo:`, Array.isArray(parsed) ? `Array[${parsed.length}]` : typeof parsed);
                 return parsed;
             } catch (e) {
-                console.error(`❌ Erro ao carregar ${key}:`, e.message);
+                console.error(`❌ Erro ao carregar ${key}:`, e.message, e);
+                console.log('Valor bruto que causou erro:', localStorage.getItem(key)?.substring(0, 100));
                 return defaultValue;
             }
         };
@@ -358,6 +370,38 @@
                 }
             };
 
+            const testLocalStorage = () => {
+                console.log("🧪 === TESTE DE LOCALSTORAGE ===");
+                console.log("Total de listas em memória:", markets.length);
+                console.log("Conteúdo atual do state markets:", markets);
+
+                // Força salvamento
+                const saved = safeLocalStorageSet(STORAGE_KEYS.MARKETS, markets);
+                if (saved) {
+                    // Tenta recarregar
+                    const reloaded = safeLocalStorageGet(STORAGE_KEYS.MARKETS, []);
+                    console.log("Listas recarregadas:", reloaded.length);
+
+                    if (reloaded.length === markets.length) {
+                        alert(`✅ TESTE OK! ${markets.length} listas salvas e recarregadas com sucesso!`);
+                    } else {
+                        alert(`❌ ERRO! Salvou ${markets.length} mas recarregou ${reloaded.length}`);
+                    }
+                } else {
+                    alert("❌ FALHA AO SALVAR! Veja o console.");
+                }
+            };
+
+            // Salvar antes de fechar a página
+            useEffect(() => {
+                const handleBeforeUnload = () => {
+                    console.log("🚪 Salvando antes de fechar...");
+                    safeLocalStorageSet(STORAGE_KEYS.MARKETS, markets);
+                };
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+            }, [markets]);
+
             // --- RENDERIZAÇÃO ---
             if (view === 'settings') {
                 const storageInfo = getStorageInfo();
@@ -391,6 +435,11 @@
                                     {isFetchingKey ? "Buscando..." : <><Icons.Refresh size={16}/> Recarregar Manualmente</>}
                                 </button>
                             </div>
+
+                            {/* Botão de Teste */}
+                            <button onClick={testLocalStorage} className="w-full p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold rounded text-sm border border-blue-300">
+                                🧪 Testar Salvamento (Ver Console F12)
+                            </button>
 
                             {/* Botão de Limpar Tudo */}
                             <button onClick={clearAllData} className="w-full p-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-sm border border-red-300">
@@ -472,9 +521,14 @@
                         </div>
                     )}
 
-                    <header className="bg-gradient-to-br from-blue-700 to-blue-600 text-white p-6 rounded-b-3xl shadow-lg mb-6 flex justify-between items-start">
-                        <div><h1 className="text-2xl font-bold flex items-center gap-2">🛒 Scanner IA by Johnny</h1><p className="opacity-80 text-sm">Orçamento Inteligente</p></div>
-                        <button onClick={() => setView('settings')} className="p-2 bg-white/10 rounded-full"><Icons.Settings /></button>
+                    <header className="bg-gradient-to-br from-blue-700 to-blue-600 text-white p-6 rounded-b-3xl shadow-lg mb-6">
+                        <div className="flex justify-between items-start mb-3">
+                            <div><h1 className="text-2xl font-bold flex items-center gap-2">🛒 Scanner IA by Johnny</h1><p className="opacity-80 text-sm">Orçamento Inteligente</p></div>
+                            <button onClick={() => setView('settings')} className="p-2 bg-white/10 rounded-full"><Icons.Settings /></button>
+                        </div>
+                        <div className="bg-white/10 px-3 py-2 rounded-lg text-xs">
+                            💾 <strong>{markets.length}</strong> lista{markets.length !== 1 ? 's' : ''} salva{markets.length !== 1 ? 's' : ''} na memória
+                        </div>
                     </header>
                     <div className="px-4">
                         <form onSubmit={(e) => {
