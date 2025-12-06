@@ -158,6 +158,7 @@
             const [showDebugPanel, setShowDebugPanel] = useState(false);
             const [toast, setToast] = useState({ show: false, message: '', type: '' });
             const [storageWarning, setStorageWarning] = useState(null);
+            const [loadingStatus, setLoadingStatus] = useState({ show: true, message: 'Iniciando...', progress: 0 });
 
             // Persistência Imediata com Validação
             useEffect(() => { safeLocalStorageSet(STORAGE_KEYS.MARKETS, markets); }, [markets]);
@@ -222,23 +223,38 @@
                 const autoInit = async () => {
                     if (initialized) return;
 
+                    setLoadingStatus({ show: true, message: 'Iniciando sistema...', progress: 10 });
                     addLog("🌐 Carregando dados da planilha...");
-                    showToast("📥 Carregando dados...", "info");
 
                     try {
                         // 1. Busca DADOS da planilha
+                        setLoadingStatus({ show: true, message: 'Carregando listas...', progress: 33 });
                         const dataResponse = await fetch(sheetUrl + '?action=loadData');
                         const dataResult = await dataResponse.json();
 
                         if (dataResult.markets && dataResult.markets.length > 0) {
                             setMarkets(dataResult.markets);
+
+                            // Debug: Contar produtos com e sem foto
+                            let totalProdutos = 0;
+                            let produtosComFoto = 0;
+                            dataResult.markets.forEach(market => {
+                                totalProdutos += market.products.length;
+                                market.products.forEach(prod => {
+                                    if (prod.img && prod.img.length > 0) {
+                                        produtosComFoto++;
+                                    }
+                                });
+                            });
+
                             addLog(`✅ ${dataResult.markets.length} listas carregadas da planilha`);
-                            showToast(`✅ ${dataResult.markets.length} listas carregadas!`, "success");
+                            addLog(`📊 ${totalProdutos} produtos (${produtosComFoto} com foto, ${totalProdutos - produtosComFoto} sem foto)`);
                         } else {
                             addLog("📭 Nenhum dado na planilha ainda");
                         }
 
                         // 2. Busca chave API SEMPRE (para manter atualizada)
+                        setLoadingStatus({ show: true, message: 'Buscando chave API...', progress: 66 });
                         addLog("🔑 Buscando chave API da planilha...");
                         try {
                             const keyResponse = await fetch(sheetUrl);
@@ -247,16 +263,19 @@
                                 setApiKey(keyData.apiKey);
                                 localStorage.setItem(STORAGE_KEYS.API_KEY, keyData.apiKey);
                                 addLog("✅ Chave API atualizada automaticamente!");
+                                setLoadingStatus({ show: true, message: '✅ Chave API OK!', progress: 90 });
                             } else {
                                 addLog("⚠️ Chave API não encontrada na planilha");
+                                setLoadingStatus({ show: true, message: '⚠️ Chave API não encontrada', progress: 90 });
                             }
                         } catch (keyError) {
                             addLog("⚠️ Não foi possível buscar chave API: " + keyError.message);
+                            setLoadingStatus({ show: true, message: '⚠️ Erro ao buscar API', progress: 90 });
                         }
 
                     } catch (e) {
                         addLog("❌ Erro ao carregar: " + e.message);
-                        showToast("⚠️ Erro ao carregar dados", "warning");
+                        setLoadingStatus({ show: true, message: '⚠️ Usando cache local...', progress: 75 });
 
                         // Fallback: tenta usar localStorage
                         const localData = safeLocalStorageGet(STORAGE_KEYS.MARKETS, []);
@@ -266,6 +285,10 @@
                         }
                     }
 
+                    // Sistema pronto!
+                    setLoadingStatus({ show: true, message: '✅ Sistema OK!', progress: 100 });
+                    await new Promise(resolve => setTimeout(resolve, 800)); // Mostra "Sistema OK!" por 800ms
+                    setLoadingStatus({ show: false, message: '', progress: 0 });
                     setInitialized(true);
                 };
                 autoInit();
@@ -298,6 +321,7 @@
                 setIsFetchingKey(false);
             };
 
+            // Redimensiona para IA (boa qualidade para leitura)
             const resizeImage = (file) => {
                 return new Promise((resolve) => {
                     const reader = new FileReader();
@@ -306,7 +330,7 @@
                         img.onload = () => {
                             const canvas = document.createElement('canvas');
                             let w = img.width, h = img.height;
-                            const MAX = 250; // ULTRA reduzido para economia máxima (80% menor)
+                            const MAX = 800; // Alta qualidade para IA ler corretamente
                             if (w > h && w > MAX) {
                                 h *= MAX / w;
                                 w = MAX;
@@ -318,11 +342,11 @@
                             canvas.height = h;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, w, h);
-                            const compressed = canvas.toDataURL('image/jpeg', 0.35); // Qualidade bem reduzida para 35%
-                            const sizeKB = (compressed.length / 1024).toFixed(2);
-                            console.log(`📸 Imagem ULTRA comprimida: ${w}x${h}, ${sizeKB}KB (~80% economia)`);
-                            if (globalAddLog) globalAddLog(`📸 Foto: ${sizeKB}KB`);
-                            resolve(compressed);
+                            const highQuality = canvas.toDataURL('image/jpeg', 0.85); // Alta qualidade para IA
+                            const sizeKB = (highQuality.length / 1024).toFixed(2);
+                            console.log(`📸 Foto para IA: ${w}x${h}, ${sizeKB}KB (alta qualidade)`);
+                            if (globalAddLog) globalAddLog(`📸 Foto para IA: ${sizeKB}KB`);
+                            resolve(highQuality);
                         };
                         img.src = e.target.result;
                     };
@@ -330,21 +354,55 @@
                 });
             };
 
+            // Comprime MUITO para salvar na planilha (economiza espaço)
+            const compressForSheet = (base64Image) => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let w = img.width, h = img.height;
+                        const MAX = 250; // ULTRA comprimido só para planilha
+                        if (w > h && w > MAX) {
+                            h *= MAX / w;
+                            w = MAX;
+                        } else if (h > MAX) {
+                            w *= MAX / h;
+                            h = MAX;
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        const compressed = canvas.toDataURL('image/jpeg', 0.35); // Baixa qualidade para economizar
+                        const sizeKB = (compressed.length / 1024).toFixed(2);
+                        console.log(`💾 Foto para planilha: ${w}x${h}, ${sizeKB}KB (comprimida)`);
+                        if (globalAddLog) globalAddLog(`💾 Para planilha: ${sizeKB}KB`);
+                        resolve(compressed);
+                    };
+                    img.src = base64Image;
+                });
+            };
+
             const callGemini = async (base64Full) => {
                 let currentKey = apiKey || localStorage.getItem(STORAGE_KEYS.API_KEY);
-                
+
                 if(!currentKey) {
+                     addLog("❌ Chave API não encontrada!");
                      alert("Chave API não configurada. O App tentará buscar automaticamente na próxima vez, ou vá em Configurações.");
                      setView('settings');
                      setIsProcessing(false);
                      return;
                 }
-                
-                setStatusMsg(`Lendo...`);
-                addLog(`Enviando para ${modelId}...`);
-                
+
+                setStatusMsg(`Lendo com IA...`);
+                addLog(`🤖 Enviando para ${modelId}...`);
+                addLog(`🔑 API Key: ${currentKey.substring(0, 10)}...`);
+
                 const base64Data = base64Full.split(',')[1];
-                const prompt = `Extraia apenas JSON: { "name": "Produto", "price": "10.99" }. Se falhar, string vazia.`;
+                const imageSizeKB = (base64Data.length / 1024).toFixed(2);
+                addLog(`📤 Enviando ${imageSizeKB}KB para análise...`);
+
+                const prompt = `Analise esta imagem de produto de supermercado e retorne APENAS um JSON válido com o nome do produto e o preço. Formato: {"name": "Nome do Produto", "price": "0.00"}. Use ponto para decimais.`;
 
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${currentKey}`, {
@@ -353,31 +411,49 @@
                         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }] })
                     });
 
+                    addLog(`📡 Status da resposta: ${response.status}`);
+
                     if (!response.ok) {
                         const errTxt = await response.text();
-                        throw new Error(`Erro API: ${response.status} - ${errTxt}`);
+                        addLog(`❌ Erro HTTP ${response.status}: ${errTxt.substring(0, 200)}`);
+                        throw new Error(`Erro API: ${response.status}`);
                     }
-                    
+
                     const data = await response.json();
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-                    
+                    addLog(`🔍 Resposta da IA: ${text.substring(0, 100)}...`);
+
                     let result = { name: '', price: '' };
                     try {
                         const startIndex = text.indexOf('{');
                         const endIndex = text.lastIndexOf('}');
                         if (startIndex !== -1 && endIndex !== -1) {
-                            result = JSON.parse(text.substring(startIndex, endIndex + 1));
+                            const jsonStr = text.substring(startIndex, endIndex + 1);
+                            result = JSON.parse(jsonStr);
+                            addLog(`✅ Extraído: ${result.name} - R$ ${result.price}`);
+                        } else {
+                            addLog("⚠️ Não encontrou JSON na resposta");
                         }
-                    } catch (e) { addLog("JSON Parse fail"); }
+                    } catch (e) {
+                        addLog("❌ Erro ao parsear JSON: " + e.message);
+                    }
 
-                    setAiData({ 
-                        name: result.name || '', 
-                        price: result.price ? String(result.price).replace(',', '.') : '' 
-                    });
+                    if (result.name || result.price) {
+                        setAiData({
+                            name: result.name || '',
+                            price: result.price ? String(result.price).replace(',', '.') : ''
+                        });
+                        addLog(`🎯 Dados carregados no formulário!`);
+                    } else {
+                        addLog("❌ IA não conseguiu extrair dados");
+                        showToast("⚠️ IA não encontrou dados. Preencha manualmente.", "warning");
+                        setAiData({ name: '', price: '' });
+                    }
 
                 } catch (error) {
-                    addLog("Erro IA: " + error.message);
-                    alert("Erro ao ler imagem (veja logs).");
+                    addLog("❌ Erro fatal: " + error.message);
+                    showToast("❌ Erro ao ler imagem!", "error");
+                    alert("Erro ao processar imagem. Verifique:\n1. Foto está clara?\n2. API Key configurada?\n3. Veja logs no debug (🐛)");
                 }
                 setIsProcessing(false);
             };
@@ -415,17 +491,29 @@
                 await callGemini(b64);
             };
 
-            const saveProduct = (e) => {
+            const saveProduct = async (e) => {
                 e.preventDefault();
                 const market = markets.find(m => m.id === activeMarketId);
-                const newProd = { 
-                    id: Date.now(), 
-                    name: e.target.pName.value, 
-                    price: e.target.pPrice.value.replace(',', '.'), 
-                    img: imgSrc 
+
+                // Comprime a imagem APENAS para enviar à planilha (economiza espaço)
+                let imgForSheet = imgSrc;
+                if (imgSrc) {
+                    addLog("🗜️ Comprimindo foto para planilha...");
+                    imgForSheet = await compressForSheet(imgSrc);
+                }
+
+                const newProd = {
+                    id: Date.now(),
+                    name: e.target.pName.value,
+                    price: e.target.pPrice.value.replace(',', '.'),
+                    img: imgSrc // Mantém imagem boa qualidade no app
                 };
+
+                // Produto para planilha com imagem comprimida
+                const prodForSheet = { ...newProd, img: imgForSheet };
+
                 setMarkets(markets.map(m => m.id === activeMarketId ? {...m, products: [...m.products, newProd]} : m));
-                syncItem('add', newProd, market.name);
+                syncItem('add', prodForSheet, market.name); // Envia versão comprimida
                 setView('market');
                 setImgSrc(null);
             };
@@ -433,8 +521,15 @@
             const deleteProduct = (prodId) => {
                 requestConfirm("Apagar item?", () => {
                     const market = markets.find(m => m.id === activeMarketId);
+
+                    // Atualiza UI imediatamente (otimista)
                     setMarkets(markets.map(m => m.id === activeMarketId ? {...m, products: m.products.filter(p => p.id !== prodId)} : m));
+
+                    // Sincroniza com planilha em background
                     syncItem('delete', { id: prodId }, market.name);
+
+                    addLog(`🗑️ Item deletado (ID: ${prodId})`);
+                    showToast("🗑️ Item removido!", "success");
                 });
             };
 
@@ -608,6 +703,37 @@
 
             return (
                 <div className="max-w-md mx-auto min-h-screen pb-10">
+                    {/* Splash Screen de Carregamento */}
+                    {loadingStatus.show && (
+                        <div className="fixed inset-0 bg-gradient-to-br from-blue-700 to-blue-900 z-[250] flex flex-col items-center justify-center p-8">
+                            <div className="text-center space-y-6">
+                                {/* Logo/Ícone */}
+                                <div className="bg-white/10 backdrop-blur-lg p-6 rounded-3xl inline-block mb-4 animate-pulse-slow">
+                                    <div className="text-6xl">🛒</div>
+                                </div>
+
+                                {/* Título */}
+                                <h1 className="text-3xl font-bold text-white">Scanner IA</h1>
+
+                                {/* Mensagem de Status */}
+                                <div className="bg-white/10 backdrop-blur-lg px-6 py-4 rounded-2xl min-w-[280px]">
+                                    <p className="text-white text-lg font-medium">{loadingStatus.message}</p>
+                                </div>
+
+                                {/* Barra de Progresso */}
+                                <div className="w-64 bg-white/20 rounded-full h-2 overflow-hidden">
+                                    <div
+                                        className="bg-white h-full rounded-full transition-all duration-500 ease-out"
+                                        style={{ width: `${loadingStatus.progress}%` }}
+                                    ></div>
+                                </div>
+
+                                {/* Percentual */}
+                                <p className="text-white/70 text-sm font-mono">{loadingStatus.progress}%</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Toast de Notificação */}
                     {toast.show && (
                         <div className={`fixed top-4 left-4 right-4 z-[200] ${toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : toast.type === 'warning' ? 'bg-yellow-600' : 'bg-blue-600'} text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-pulse-slow`}>

@@ -121,12 +121,29 @@ function doPost(e) {
     else if (action === "delete") {
       var idToDelete = data.id;
       var dataRange = sheet.getDataRange().getValues();
-      
+
       // Procura o ID na coluna E (índice 4) de baixo para cima (mais rápido para itens recentes)
       for (var i = dataRange.length - 1; i >= 1; i--) {
         if (String(dataRange[i][4]) === String(idToDelete)) {
-          sheet.deleteRow(i + 1); // Deleta a linha encontrada
-          break; // Para após encontrar
+          var rowNumber = i + 1;
+
+          // PRIMEIRO: Remove todas as imagens dessa linha
+          var images = sheet.getImages();
+          for (var j = images.length - 1; j >= 0; j--) {
+            var imgRow = images[j].getAnchorRow();
+            if (imgRow === rowNumber) {
+              images[j].remove();
+            }
+          }
+
+          // DEPOIS: Limpa todos os dados da linha (mais seguro que deleteRow em alguns casos)
+          sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).clearContent();
+
+          // FINALMENTE: Deleta a linha vazia
+          sheet.deleteRow(rowNumber);
+
+          Logger.log("Linha " + rowNumber + " deletada completamente (ID: " + idToDelete + ")");
+          break;
         }
       }
     }
