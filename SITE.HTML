@@ -238,17 +238,20 @@
                             addLog("📭 Nenhum dado na planilha ainda");
                         }
 
-                        // 2. Busca chave API (se não tiver)
-                        let currentKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
-                        if (!currentKey) {
-                            addLog("Buscando chave API...");
+                        // 2. Busca chave API SEMPRE (para manter atualizada)
+                        addLog("🔑 Buscando chave API da planilha...");
+                        try {
                             const keyResponse = await fetch(sheetUrl);
                             const keyData = await keyResponse.json();
                             if (keyData.apiKey) {
                                 setApiKey(keyData.apiKey);
                                 localStorage.setItem(STORAGE_KEYS.API_KEY, keyData.apiKey);
-                                addLog("🔑 Chave API carregada!");
+                                addLog("✅ Chave API atualizada automaticamente!");
+                            } else {
+                                addLog("⚠️ Chave API não encontrada na planilha");
                             }
+                        } catch (keyError) {
+                            addLog("⚠️ Não foi possível buscar chave API: " + keyError.message);
                         }
 
                     } catch (e) {
@@ -303,7 +306,7 @@
                         img.onload = () => {
                             const canvas = document.createElement('canvas');
                             let w = img.width, h = img.height;
-                            const MAX = 600; // Reduzido de 800 para 600 para economizar espaço
+                            const MAX = 250; // ULTRA reduzido para economia máxima (80% menor)
                             if (w > h && w > MAX) {
                                 h *= MAX / w;
                                 w = MAX;
@@ -315,8 +318,10 @@
                             canvas.height = h;
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, w, h);
-                            const compressed = canvas.toDataURL('image/jpeg', 0.6); // Qualidade reduzida para 60%
-                            console.log(`📸 Imagem redimensionada: ${w}x${h}, tamanho: ${(compressed.length / 1024).toFixed(2)}KB`);
+                            const compressed = canvas.toDataURL('image/jpeg', 0.35); // Qualidade bem reduzida para 35%
+                            const sizeKB = (compressed.length / 1024).toFixed(2);
+                            console.log(`📸 Imagem ULTRA comprimida: ${w}x${h}, ${sizeKB}KB (~80% economia)`);
+                            if (globalAddLog) globalAddLog(`📸 Foto: ${sizeKB}KB`);
                             resolve(compressed);
                         };
                         img.src = e.target.result;

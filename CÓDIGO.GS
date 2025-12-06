@@ -20,6 +20,7 @@ function doGet(e) {
         var itemName = data[i][1];     // Coluna B: Item
         var price = data[i][2];        // Coluna C: Preço
         var itemId = data[i][4];       // Coluna E: ID
+        var imgData = data[i][5];      // Coluna F: IMG_DATA (base64)
 
         if (!marketName || !itemName) continue;
 
@@ -33,12 +34,12 @@ function doGet(e) {
           };
         }
 
-        // Adiciona produto
+        // Adiciona produto (COM FOTO!)
         markets[marketName].products.push({
           id: itemId || Date.now(),
           name: itemName,
           price: String(price).replace(',', '.'),
-          img: null  // Não carrega imagens por performance
+          img: imgData || null  // Carrega a imagem em base64
         });
       }
 
@@ -67,12 +68,12 @@ function doPost(e) {
     
     if (!sheet) sheet = ss.insertSheet("LISTA");
 
-    // Configura cabeçalho se vazio (Agora com coluna ID oculta na coluna E)
+    // Configura cabeçalho se vazio (Agora com coluna ID oculta na coluna E e IMG_DATA na F)
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["MERCADO", "ITEM", "PREÇO", "FOTO", "ID_SISTEMA"]);
-      sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#d9d9d9");
-      sheet.setColumnWidth(4, 100); 
-      // A coluna 5 (ID) fica visível mas é técnica. Você pode ocultar no Excel se quiser.
+      sheet.appendRow(["MERCADO", "ITEM", "PREÇO", "FOTO", "ID_SISTEMA", "IMG_DATA"]);
+      sheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#d9d9d9");
+      sheet.setColumnWidth(4, 100);
+      sheet.hideColumns(6); // Esconde coluna F (IMG_DATA) pois é só para dados
     }
 
     var action = data.action; // 'add' ou 'delete'
@@ -83,18 +84,21 @@ function doPost(e) {
       var priceBR = prod.price.toString().replace('.', ',');
       var nextRow = sheet.getLastRow() + 1;
 
-      // Salva: Mercado, Nome, Preço, Foto, ID
+      // Salva: Mercado, Nome, Preço, Foto, ID, IMG_DATA
       sheet.getRange(nextRow, 1, 1, 3).setValues([[data.marketName, prod.name, priceBR]]);
       sheet.getRange(nextRow, 5).setValue(prod.id); // Salva o ID único
 
       if (prod.img) {
+        // Salva o base64 completo na coluna F (para recuperar depois)
+        sheet.getRange(nextRow, 6).setValue(prod.img);
+
         try {
           var base64Data = prod.img.split(',')[1];
           var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), 'image/jpeg', 'produto.jpg');
           var img = SpreadsheetApp.newCellImage().setSourceUrl(blob).build();
           sheet.getRange(nextRow, 4).setValue(img);
         } catch (e) {
-          Logger.log("Erro ao salvar imagem: " + e.message);
+          Logger.log("Erro ao salvar imagem visual: " + e.message);
           // Tenta método alternativo
           try {
             var base64Data = prod.img.split(',')[1];
@@ -102,11 +106,12 @@ function doPost(e) {
             sheet.insertImage(blob, 4, nextRow);
             sheet.getRange(nextRow, 4).setValue("IMG");
           } catch (e2) {
-            sheet.getRange(nextRow, 4).setValue("Sem Foto");
+            sheet.getRange(nextRow, 4).setValue("✓");
           }
         }
       } else {
         sheet.getRange(nextRow, 4).setValue("-");
+        sheet.getRange(nextRow, 6).setValue(""); // Sem foto
       }
       
       sheet.setRowHeight(nextRow, 80);
