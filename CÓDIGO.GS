@@ -78,8 +78,16 @@ function doPost(e) {
 
     var action = data.action; // 'add' ou 'delete'
 
+    // LOG SEMPRE - para ver o que chega
+    Logger.log("========================================");
+    Logger.log("PAYLOAD RECEBIDO:");
+    Logger.log("Action: '" + action + "' (tipo: " + typeof action + ")");
+    Logger.log("Payload completo: " + JSON.stringify(data));
+    Logger.log("========================================");
+
     // --- AÇÃO: ADICIONAR ---
     if (action === "add") {
+      Logger.log(">>> ENTRANDO NO ADD <<<");
       var prod = data.product;
       var priceBR = prod.price.toString().replace('.', ',');
       var nextRow = sheet.getLastRow() + 1;
