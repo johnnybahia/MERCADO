@@ -232,7 +232,21 @@
 
                         if (dataResult.markets && dataResult.markets.length > 0) {
                             setMarkets(dataResult.markets);
+
+                            // Debug: Contar produtos com e sem foto
+                            let totalProdutos = 0;
+                            let produtosComFoto = 0;
+                            dataResult.markets.forEach(market => {
+                                totalProdutos += market.products.length;
+                                market.products.forEach(prod => {
+                                    if (prod.img && prod.img.length > 0) {
+                                        produtosComFoto++;
+                                    }
+                                });
+                            });
+
                             addLog(`✅ ${dataResult.markets.length} listas carregadas da planilha`);
+                            addLog(`📊 ${totalProdutos} produtos (${produtosComFoto} com foto, ${totalProdutos - produtosComFoto} sem foto)`);
                             showToast(`✅ ${dataResult.markets.length} listas carregadas!`, "success");
                         } else {
                             addLog("📭 Nenhum dado na planilha ainda");
@@ -433,8 +447,15 @@
             const deleteProduct = (prodId) => {
                 requestConfirm("Apagar item?", () => {
                     const market = markets.find(m => m.id === activeMarketId);
+
+                    // Atualiza UI imediatamente (otimista)
                     setMarkets(markets.map(m => m.id === activeMarketId ? {...m, products: m.products.filter(p => p.id !== prodId)} : m));
+
+                    // Sincroniza com planilha em background
                     syncItem('delete', { id: prodId }, market.name);
+
+                    addLog(`🗑️ Item deletado (ID: ${prodId})`);
+                    showToast("🗑️ Item removido!", "success");
                 });
             };
 
