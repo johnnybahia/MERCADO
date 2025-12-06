@@ -120,32 +120,72 @@ function doPost(e) {
     // --- AÇÃO: DELETAR ---
     else if (action === "delete") {
       var idToDelete = data.id;
+
+      Logger.log("=== INICIANDO DELEÇÃO ===");
+      Logger.log("ID recebido para deletar: " + idToDelete);
+      Logger.log("Tipo do ID: " + typeof idToDelete);
+      Logger.log("Payload completo recebido: " + JSON.stringify(data));
+
       var dataRange = sheet.getDataRange().getValues();
+      Logger.log("Total de linhas na planilha: " + dataRange.length);
+
+      var encontrado = false;
 
       // Procura o ID na coluna E (índice 4) de baixo para cima (mais rápido para itens recentes)
       for (var i = dataRange.length - 1; i >= 1; i--) {
+        var idNaPlanilha = dataRange[i][4];
+
+        // Log detalhado de cada comparação
+        if (i <= 5) { // Loga apenas as últimas 5 linhas para não poluir
+          Logger.log("Linha " + (i + 1) + " - ID na planilha: '" + idNaPlanilha + "' (tipo: " + typeof idNaPlanilha + ")");
+          Logger.log("  Comparando com: '" + idToDelete + "'");
+          Logger.log("  Match? " + (String(idNaPlanilha) === String(idToDelete)));
+        }
+
         if (String(dataRange[i][4]) === String(idToDelete)) {
+          encontrado = true;
           var rowNumber = i + 1;
+
+          Logger.log("✅ ID ENCONTRADO na linha " + rowNumber + "!");
+          Logger.log("Dados da linha: " + JSON.stringify(dataRange[i]));
 
           // PRIMEIRO: Remove todas as imagens dessa linha
           var images = sheet.getImages();
+          Logger.log("Total de imagens na planilha: " + images.length);
+
+          var imagensRemovidas = 0;
           for (var j = images.length - 1; j >= 0; j--) {
             var imgRow = images[j].getAnchorRow();
+            Logger.log("Imagem " + j + " está na linha: " + imgRow);
             if (imgRow === rowNumber) {
               images[j].remove();
+              imagensRemovidas++;
+              Logger.log("  ✅ Imagem removida!");
             }
           }
+          Logger.log("Total de imagens removidas: " + imagensRemovidas);
 
-          // DEPOIS: Limpa todos os dados da linha (mais seguro que deleteRow em alguns casos)
+          // DEPOIS: Limpa todos os dados da linha
           sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).clearContent();
+          Logger.log("✅ Conteúdo da linha limpo");
 
           // FINALMENTE: Deleta a linha vazia
           sheet.deleteRow(rowNumber);
+          Logger.log("✅ Linha " + rowNumber + " deletada completamente!");
 
-          Logger.log("Linha " + rowNumber + " deletada completamente (ID: " + idToDelete + ")");
           break;
         }
       }
+
+      if (!encontrado) {
+        Logger.log("❌ ID NÃO ENCONTRADO na planilha!");
+        Logger.log("IDs disponíveis na planilha:");
+        for (var k = 1; k < dataRange.length; k++) {
+          Logger.log("  Linha " + (k + 1) + ": ID = '" + dataRange[k][4] + "'");
+        }
+      }
+
+      Logger.log("=== FIM DA DELEÇÃO ===");
     }
 
     return ContentService.createTextOutput(JSON.stringify({ "status": "success" })).setMimeType(ContentService.MimeType.JSON);
