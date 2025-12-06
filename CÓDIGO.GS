@@ -1,9 +1,56 @@
 function doGet(e) {
-  // Retorna a chave API para o App
   try {
+    var action = e.parameter.action;
+
+    // Retorna TODOS OS DADOS da planilha
+    if (action === "loadData") {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName("LISTA");
+
+      if (!sheet || sheet.getLastRow() <= 1) {
+        return ContentService.createTextOutput(JSON.stringify({ "markets": [] })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var data = sheet.getDataRange().getValues();
+      var markets = {};
+
+      // Pula o cabeçalho (linha 0)
+      for (var i = 1; i < data.length; i++) {
+        var marketName = data[i][0];  // Coluna A: Mercado
+        var itemName = data[i][1];     // Coluna B: Item
+        var price = data[i][2];        // Coluna C: Preço
+        var itemId = data[i][4];       // Coluna E: ID
+
+        if (!marketName || !itemName) continue;
+
+        // Cria mercado se não existe
+        if (!markets[marketName]) {
+          markets[marketName] = {
+            id: marketName.replace(/\s/g, '_').toLowerCase(),
+            name: marketName,
+            date: new Date().toLocaleDateString('pt-BR'),
+            products: []
+          };
+        }
+
+        // Adiciona produto
+        markets[marketName].products.push({
+          id: itemId || Date.now(),
+          name: itemName,
+          price: String(price).replace(',', '.'),
+          img: null  // Não carrega imagens por performance
+        });
+      }
+
+      var marketsList = Object.values(markets);
+      return ContentService.createTextOutput(JSON.stringify({ "markets": marketsList })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Retorna chave API (comportamento padrão)
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("API");
     var key = sheet ? sheet.getRange("A1").getValue() : "";
     return ContentService.createTextOutput(JSON.stringify({ "apiKey": key })).setMimeType(ContentService.MimeType.JSON);
+
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ "error": err.message })).setMimeType(ContentService.MimeType.JSON);
   }

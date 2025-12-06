@@ -157,6 +157,7 @@
             const [initialized, setInitialized] = useState(false);
             const [showDebugPanel, setShowDebugPanel] = useState(false);
             const [toast, setToast] = useState({ show: false, message: '', type: '' });
+            const [storageWarning, setStorageWarning] = useState(null);
 
             // Persistência Imediata com Validação
             useEffect(() => { safeLocalStorageSet(STORAGE_KEYS.MARKETS, markets); }, [markets]);
@@ -181,30 +182,87 @@
                 globalAddLog = addLog;
             }, []);
 
-            // --- AUTO-RESGATE INTELIGENTE ---
+            // TESTE DE PERSISTÊNCIA AO INICIAR
+            useEffect(() => {
+                const testPersistence = () => {
+                    const testKey = 'scanner_persistence_test';
+                    const testValue = Date.now().toString();
+
+                    try {
+                        // Tenta salvar
+                        localStorage.setItem(testKey, testValue);
+
+                        // Tenta ler de volta
+                        const retrieved = localStorage.getItem(testKey);
+
+                        if (retrieved !== testValue) {
+                            setStorageWarning('⚠️ MODO ANÔNIMO DETECTADO! Dados serão apagados ao fechar.');
+                            addLog('❌ ALERTA: Modo Anônimo ou Privado detectado!');
+                            showToast('⚠️ Modo Anônimo! Dados não salvam!', 'warning');
+                            return false;
+                        }
+
+                        // Limpa teste
+                        localStorage.removeItem(testKey);
+                        addLog('✅ Teste de persistência OK');
+                        return true;
+                    } catch (e) {
+                        setStorageWarning('❌ ERRO: LocalStorage não funciona neste navegador!');
+                        addLog('❌ localStorage não disponível: ' + e.message);
+                        showToast('❌ Erro: Não pode salvar dados!', 'error');
+                        return false;
+                    }
+                };
+
+                setTimeout(() => testPersistence(), 1000);
+            }, []);
+
+            // --- AUTO-CARREGAMENTO DA PLANILHA ---
             useEffect(() => {
                 const autoInit = async () => {
                     if (initialized) return;
-                    
-                    // Verifica se a chave está na memória. Se não, tenta buscar na planilha.
-                    let currentKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
-                    
-                    if (!currentKey && sheetUrl) {
-                        addLog("Chave não encontrada na memória. Buscando na planilha...");
-                        setIsFetchingKey(true);
-                        try {
-                            const response = await fetch(sheetUrl);
-                            const data = await response.json();
-                            if (data.apiKey) {
-                                setApiKey(data.apiKey);
-                                localStorage.setItem(STORAGE_KEYS.API_KEY, data.apiKey);
-                                addLog("Chave recuperada com sucesso!");
-                            }
-                        } catch (e) {
-                            addLog("Falha no auto-resgate: " + e.message);
+
+                    addLog("🌐 Carregando dados da planilha...");
+                    showToast("📥 Carregando dados...", "info");
+
+                    try {
+                        // 1. Busca DADOS da planilha
+                        const dataResponse = await fetch(sheetUrl + '?action=loadData');
+                        const dataResult = await dataResponse.json();
+
+                        if (dataResult.markets && dataResult.markets.length > 0) {
+                            setMarkets(dataResult.markets);
+                            addLog(`✅ ${dataResult.markets.length} listas carregadas da planilha`);
+                            showToast(`✅ ${dataResult.markets.length} listas carregadas!`, "success");
+                        } else {
+                            addLog("📭 Nenhum dado na planilha ainda");
                         }
-                        setIsFetchingKey(false);
+
+                        // 2. Busca chave API (se não tiver)
+                        let currentKey = localStorage.getItem(STORAGE_KEYS.API_KEY);
+                        if (!currentKey) {
+                            addLog("Buscando chave API...");
+                            const keyResponse = await fetch(sheetUrl);
+                            const keyData = await keyResponse.json();
+                            if (keyData.apiKey) {
+                                setApiKey(keyData.apiKey);
+                                localStorage.setItem(STORAGE_KEYS.API_KEY, keyData.apiKey);
+                                addLog("🔑 Chave API carregada!");
+                            }
+                        }
+
+                    } catch (e) {
+                        addLog("❌ Erro ao carregar: " + e.message);
+                        showToast("⚠️ Erro ao carregar dados", "warning");
+
+                        // Fallback: tenta usar localStorage
+                        const localData = safeLocalStorageGet(STORAGE_KEYS.MARKETS, []);
+                        if (localData.length > 0) {
+                            setMarkets(localData);
+                            addLog(`📦 Usando cache local: ${localData.length} listas`);
+                        }
                     }
+
                     setInitialized(true);
                 };
                 autoInit();
