@@ -535,8 +535,20 @@
 
             const deleteMarket = (marketId, e) => {
                 e.stopPropagation();
-                requestConfirm("Apagar lista?", () => {
+                requestConfirm("Apagar lista completa?", () => {
+                    const market = markets.find(m => m.id === marketId);
+
+                    // Atualiza UI imediatamente
                     setMarkets(markets.filter(x => x.id !== marketId));
+
+                    // Deleta todos os produtos da planilha (incluindo fotos)
+                    if (market && market.products.length > 0) {
+                        addLog(`🗑️ Deletando ${market.products.length} itens da planilha...`);
+                        market.products.forEach(product => {
+                            syncItem('delete', { id: product.id }, market.name);
+                        });
+                        showToast(`🗑️ Lista "${market.name}" removida!`, "success");
+                    }
                 });
             };
 
