@@ -459,25 +459,38 @@
             };
 
             const syncItem = async (action, product, marketName) => {
-                if (!sheetUrl) return; 
+                if (!sheetUrl) {
+                    addLog("❌ Sync falhou: URL da planilha não configurada!");
+                    return;
+                }
+
                 setIsSyncing(true);
-                addLog(`Sync: ${action}`);
+
+                const payload = {
+                    action: action,
+                    marketName: marketName,
+                    product: product,
+                    id: product.id
+                };
+
+                addLog(`📤 Sync ${action}: ID=${product.id}, Market="${marketName}"`);
+                console.log("📦 Payload completo:", payload);
 
                 try {
-                    await fetch(sheetUrl, {
+                    const response = await fetch(sheetUrl, {
                         method: 'POST',
                         mode: 'no-cors',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: action, 
-                            marketName: marketName,
-                            product: product,
-                            id: product.id 
-                        })
+                        body: JSON.stringify(payload)
                     });
+
+                    addLog(`✅ Request enviado (no-cors, status invisível)`);
+                    console.log("📡 Sync request enviado:", action, product.id);
                 } catch (e) {
-                    addLog("Erro Sync: " + e.message);
+                    addLog(`❌ Erro Sync: ${e.message}`);
+                    console.error("❌ Erro ao sincronizar:", e);
                 }
+
                 setTimeout(() => setIsSyncing(false), 1000);
             };
 
@@ -535,18 +548,41 @@
 
             const deleteMarket = (marketId, e) => {
                 e.stopPropagation();
-                requestConfirm("Apagar lista completa?", () => {
+                requestConfirm("Apagar lista completa?", async () => {
                     const market = markets.find(m => m.id === marketId);
 
-                    // Atualiza UI imediatamente
+                    if (!market) {
+                        addLog("❌ Lista não encontrada!");
+                        return;
+                    }
+
+                    addLog(`🗑️ Iniciando deleção da lista "${market.name}"...`);
+                    addLog(`📊 Lista tem ${market.products.length} produtos`);
+
+                    // Atualiza UI imediatamente (otimista)
                     setMarkets(markets.filter(x => x.id !== marketId));
 
                     // Deleta todos os produtos da planilha (incluindo fotos)
-                    if (market && market.products.length > 0) {
+                    if (market.products.length > 0) {
                         addLog(`🗑️ Deletando ${market.products.length} itens da planilha...`);
-                        market.products.forEach(product => {
-                            syncItem('delete', { id: product.id }, market.name);
-                        });
+
+                        // Deleta cada produto com delay para evitar race conditions
+                        for (let i = 0; i < market.products.length; i++) {
+                            const product = market.products[i];
+                            addLog(`  ${i + 1}/${market.products.length} - Deletando ID: ${product.id} (${product.name})`);
+
+                            await syncItem('delete', { id: product.id }, market.name);
+
+                            // Pequeno delay entre deleções para o backend processar
+                            if (i < market.products.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                            }
+                        }
+
+                        showToast(`🗑️ Lista "${market.name}" removida!`, "success");
+                        addLog(`✅ ${market.products.length} produtos deletados da planilha!`);
+                    } else {
+                        addLog("📭 Lista vazia, apenas removendo do app");
                         showToast(`🗑️ Lista "${market.name}" removida!`, "success");
                     }
                 });
@@ -725,7 +761,7 @@
                                 </div>
 
                                 {/* Título */}
-                                <h1 className="text-3xl font-bold text-white">Scanner IA</h1>
+                                <h1 className="text-3xl font-bold text-white">Scanner IA by Johnny</h1>
 
                                 {/* Mensagem de Status */}
                                 <div className="bg-white/10 backdrop-blur-lg px-6 py-4 rounded-2xl min-w-[280px]">
