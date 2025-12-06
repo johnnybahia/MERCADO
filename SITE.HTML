@@ -158,6 +158,7 @@
             const [showDebugPanel, setShowDebugPanel] = useState(false);
             const [toast, setToast] = useState({ show: false, message: '', type: '' });
             const [storageWarning, setStorageWarning] = useState(null);
+            const [loadingStatus, setLoadingStatus] = useState({ show: true, message: 'Iniciando...', progress: 0 });
 
             // Persistência Imediata com Validação
             useEffect(() => { safeLocalStorageSet(STORAGE_KEYS.MARKETS, markets); }, [markets]);
@@ -222,11 +223,12 @@
                 const autoInit = async () => {
                     if (initialized) return;
 
+                    setLoadingStatus({ show: true, message: 'Iniciando sistema...', progress: 10 });
                     addLog("🌐 Carregando dados da planilha...");
-                    showToast("📥 Carregando dados...", "info");
 
                     try {
                         // 1. Busca DADOS da planilha
+                        setLoadingStatus({ show: true, message: 'Carregando listas...', progress: 33 });
                         const dataResponse = await fetch(sheetUrl + '?action=loadData');
                         const dataResult = await dataResponse.json();
 
@@ -247,12 +249,12 @@
 
                             addLog(`✅ ${dataResult.markets.length} listas carregadas da planilha`);
                             addLog(`📊 ${totalProdutos} produtos (${produtosComFoto} com foto, ${totalProdutos - produtosComFoto} sem foto)`);
-                            showToast(`✅ ${dataResult.markets.length} listas carregadas!`, "success");
                         } else {
                             addLog("📭 Nenhum dado na planilha ainda");
                         }
 
                         // 2. Busca chave API SEMPRE (para manter atualizada)
+                        setLoadingStatus({ show: true, message: 'Buscando chave API...', progress: 66 });
                         addLog("🔑 Buscando chave API da planilha...");
                         try {
                             const keyResponse = await fetch(sheetUrl);
@@ -261,16 +263,19 @@
                                 setApiKey(keyData.apiKey);
                                 localStorage.setItem(STORAGE_KEYS.API_KEY, keyData.apiKey);
                                 addLog("✅ Chave API atualizada automaticamente!");
+                                setLoadingStatus({ show: true, message: '✅ Chave API OK!', progress: 90 });
                             } else {
                                 addLog("⚠️ Chave API não encontrada na planilha");
+                                setLoadingStatus({ show: true, message: '⚠️ Chave API não encontrada', progress: 90 });
                             }
                         } catch (keyError) {
                             addLog("⚠️ Não foi possível buscar chave API: " + keyError.message);
+                            setLoadingStatus({ show: true, message: '⚠️ Erro ao buscar API', progress: 90 });
                         }
 
                     } catch (e) {
                         addLog("❌ Erro ao carregar: " + e.message);
-                        showToast("⚠️ Erro ao carregar dados", "warning");
+                        setLoadingStatus({ show: true, message: '⚠️ Usando cache local...', progress: 75 });
 
                         // Fallback: tenta usar localStorage
                         const localData = safeLocalStorageGet(STORAGE_KEYS.MARKETS, []);
@@ -280,6 +285,10 @@
                         }
                     }
 
+                    // Sistema pronto!
+                    setLoadingStatus({ show: true, message: '✅ Sistema OK!', progress: 100 });
+                    await new Promise(resolve => setTimeout(resolve, 800)); // Mostra "Sistema OK!" por 800ms
+                    setLoadingStatus({ show: false, message: '', progress: 0 });
                     setInitialized(true);
                 };
                 autoInit();
@@ -694,6 +703,37 @@
 
             return (
                 <div className="max-w-md mx-auto min-h-screen pb-10">
+                    {/* Splash Screen de Carregamento */}
+                    {loadingStatus.show && (
+                        <div className="fixed inset-0 bg-gradient-to-br from-blue-700 to-blue-900 z-[250] flex flex-col items-center justify-center p-8">
+                            <div className="text-center space-y-6">
+                                {/* Logo/Ícone */}
+                                <div className="bg-white/10 backdrop-blur-lg p-6 rounded-3xl inline-block mb-4 animate-pulse-slow">
+                                    <div className="text-6xl">🛒</div>
+                                </div>
+
+                                {/* Título */}
+                                <h1 className="text-3xl font-bold text-white">Scanner IA</h1>
+
+                                {/* Mensagem de Status */}
+                                <div className="bg-white/10 backdrop-blur-lg px-6 py-4 rounded-2xl min-w-[280px]">
+                                    <p className="text-white text-lg font-medium">{loadingStatus.message}</p>
+                                </div>
+
+                                {/* Barra de Progresso */}
+                                <div className="w-64 bg-white/20 rounded-full h-2 overflow-hidden">
+                                    <div
+                                        className="bg-white h-full rounded-full transition-all duration-500 ease-out"
+                                        style={{ width: `${loadingStatus.progress}%` }}
+                                    ></div>
+                                </div>
+
+                                {/* Percentual */}
+                                <p className="text-white/70 text-sm font-mono">{loadingStatus.progress}%</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Toast de Notificação */}
                     {toast.show && (
                         <div className={`fixed top-4 left-4 right-4 z-[200] ${toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : toast.type === 'warning' ? 'bg-yellow-600' : 'bg-blue-600'} text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-pulse-slow`}>
